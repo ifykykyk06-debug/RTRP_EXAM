@@ -1,0 +1,8 @@
+{
+  "name": "EduGuard AI Exam System",
+  "description": "A comprehensive online examination platform with AI proctoring, teacher/student dashboards, and automated analysis.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
