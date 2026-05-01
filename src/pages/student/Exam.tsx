@@ -7,9 +7,8 @@ import { io } from 'socket.io-client';
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 export default function StudentExam() {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
   const { id } = useParams();
   const navigate = useNavigate();
   const { token, user } = useAuth();
