@@ -17,6 +17,7 @@ export default function StudentExam() {
   const [answers, setAnswers] = useState<any>({});
   const [logs, setLogs] = useState<any[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
+  const [cognitiveLogs, setCognitiveLogs] = useState<any[]>([]);
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState<string | null>(null);
@@ -248,7 +249,7 @@ export default function StudentExam() {
                   }
                 },
                 {
-                  text: "You are an AI proctor. Analyze this webcam frame. Detect: 1. Multiple people. 2. Mobile phones/tablets. 3. Papers/books/notes. Respond in JSON."
+                  text: "You are an AI proctor and cognitive analyst. Analyze this webcam frame. 1. Detect suspicious activity (Multiple people, phones, notes). 2. Analyze student state: Emotions (stress, confusion, calm), Focus level (0-100), and Gaze direction (Center, Left, Right, Up, Down). Respond in JSON."
                 }
               ],
               config: {
@@ -258,14 +259,27 @@ export default function StudentExam() {
                   properties: {
                     isSuspicious: { type: Type.BOOLEAN },
                     reason: { type: Type.STRING },
-                    confidence: { type: Type.NUMBER }
+                    confidence: { type: Type.NUMBER },
+                    emotion: { type: Type.STRING },
+                    focusScore: { type: Type.NUMBER },
+                    gazeDirection: { type: Type.STRING }
                   },
-                  required: ["isSuspicious", "reason"]
+                  required: ["isSuspicious", "reason", "emotion", "focusScore", "gazeDirection"]
                 }
               }
             });
 
             const result = JSON.parse(response.text || "{}");
+            
+            // Track cognitive data
+            const cogLog = {
+              timestamp: new Date(),
+              emotion: result.emotion,
+              focusScore: result.focusScore,
+              gaze: result.gazeDirection
+            };
+            setCognitiveLogs(prev => [...prev, cogLog]);
+
             if (result.isSuspicious && result.confidence > 0.7) {
               const fullBase64Image = canvasRef.current.toDataURL('image/jpeg', 0.7);
               
@@ -400,7 +414,8 @@ export default function StudentExam() {
         cognitiveAnalysis,
         focusAnalysis,
         growthAnalysis,
-        detailedFeedback
+        detailedFeedback,
+        cognitiveLogs
       })
     });
     if (res.ok) {

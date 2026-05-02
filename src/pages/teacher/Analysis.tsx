@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { motion } from 'motion/react';
-import { Check, X, Eye, AlertCircle, CheckCircle } from 'lucide-react';
+import { Check, X, Eye, AlertCircle, CheckCircle, Brain, Activity, Smile, UserCheck, Target } from 'lucide-react';
 import Markdown from 'react-markdown';
 
 export default function TeacherAnalysis() {
@@ -148,42 +148,80 @@ export default function TeacherAnalysis() {
                   </div>
                 </div>
 
-                <div>
-                  <h3 className="text-sm font-bold text-zinc-500 uppercase mb-4">AI Performance Analysis</h3>
-                  {selectedSub.results_released ? (
-                    <div className="space-y-4">
-                      <div className="p-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm">
-                        <p className="text-xs font-bold text-zinc-500 uppercase mb-2">General Feedback</p>
-                        <p className="text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed italic">{selectedSub.ai_analysis}</p>
-                      </div>
-                      <div className="grid grid-cols-1 gap-4">
-                        <div className="p-4 bg-purple-500/5 border border-purple-500/10 rounded-xl shadow-sm">
-                          <p className="text-xs font-bold text-purple-500 uppercase mb-2">Cognitive Analysis</p>
-                          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">{selectedSub.cognitive_analysis || "Analysis pending..."}</p>
-                        </div>
-                        <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl shadow-sm">
-                          <p className="text-xs font-bold text-emerald-500 uppercase mb-2">Focus Analysis</p>
-                          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">{selectedSub.focus_analysis || "Analysis pending..."}</p>
-                        </div>
-                        <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-xl shadow-sm">
-                          <p className="text-xs font-bold text-blue-500 uppercase mb-2">Growth Analysis</p>
-                          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">{selectedSub.growth_analysis || "Analysis pending..."}</p>
-                        </div>
-                      </div>
-                      {selectedSub.detailed_feedback && (
-                        <div className="p-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm">
-                          <p className="text-xs font-bold text-zinc-500 uppercase mb-2">Detailed Question Breakdown & Apt Answers</p>
-                          <div className="prose prose-sm dark:prose-invert max-w-none text-zinc-600 dark:text-zinc-300 leading-relaxed">
-                            <Markdown>{selectedSub.detailed_feedback}</Markdown>
+                </div>
+                
+                {/* Cognitive & Stress Analysis Section */}
+                <div className="pt-6 border-t border-zinc-200 dark:border-zinc-800">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500">
+                      <Brain size={20} />
+                    </div>
+                    <h3 className="text-sm font-bold text-zinc-500 uppercase">AI Cognitive & Stress Report</h3>
+                  </div>
+
+                  <div className="space-y-6">
+                    {selectedSub.cognitive_logs ? (
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="p-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm">
+                            <div className="flex items-center gap-2 text-zinc-500 mb-2">
+                              <Smile size={14} />
+                              <span className="text-[10px] font-bold uppercase">Dominant Emotion</span>
+                            </div>
+                            <p className="text-lg font-bold text-zinc-900 dark:text-white capitalize">
+                              {JSON.parse(selectedSub.cognitive_logs).reduce((acc: any, curr: any) => {
+                                acc[curr.emotion] = (acc[curr.emotion] || 0) + 1;
+                                return acc;
+                              }, {}).calm > (JSON.parse(selectedSub.cognitive_logs).length / 2) ? 'Calm' : 'Highly Stressed'}
+                            </p>
+                          </div>
+                          <div className="p-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm">
+                            <div className="flex items-center gap-2 text-zinc-500 mb-2">
+                              <Activity size={14} />
+                              <span className="text-[10px] font-bold uppercase">Avg Focus Level</span>
+                            </div>
+                            <p className="text-lg font-bold text-emerald-500">
+                              {Math.round(JSON.parse(selectedSub.cognitive_logs).reduce((acc: number, curr: any) => acc + curr.focusScore, 0) / JSON.parse(selectedSub.cognitive_logs).length)}%
+                            </p>
+                          </div>
+                          <div className="p-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm">
+                            <div className="flex items-center gap-2 text-zinc-500 mb-2">
+                              <Target size={14} />
+                              <span className="text-[10px] font-bold uppercase">Gaze Stability</span>
+                            </div>
+                            <p className="text-lg font-bold text-blue-500">
+                              {Math.round((JSON.parse(selectedSub.cognitive_logs).filter((l: any) => l.gaze === 'Center').length / JSON.parse(selectedSub.cognitive_logs).length) * 100)}%
+                            </p>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="p-8 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl text-center">
-                      <p className="text-sm text-zinc-500">AI Analysis is locked until results are released to students.</p>
-                    </div>
-                  )}
+
+                        <div className="space-y-3">
+                          <p className="text-[10px] font-bold text-zinc-400 uppercase">Emotion Timeline</p>
+                          <div className="flex gap-1 h-2 rounded-full overflow-hidden">
+                            {JSON.parse(selectedSub.cognitive_logs).map((log: any, i: number) => (
+                              <div 
+                                key={i} 
+                                title={`${log.emotion} (${log.focusScore}%)`}
+                                className={`flex-1 h-full ${
+                                  log.emotion === 'calm' ? 'bg-emerald-500' : 
+                                  log.emotion === 'stress' ? 'bg-red-500' : 
+                                  'bg-amber-500'
+                                }`} 
+                              />
+                            ))}
+                          </div>
+                          <div className="flex justify-between text-[10px] text-zinc-500">
+                            <span>Exam Start</span>
+                            <span>End</span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="p-8 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl text-center">
+                        <p className="text-xs text-zinc-500 italic">No cognitive data recorded for this session.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

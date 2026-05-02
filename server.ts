@@ -127,7 +127,8 @@ async function startServer() {
       cognitiveAnalysis,
       focusAnalysis,
       growthAnalysis,
-      detailedFeedback
+      detailedFeedback,
+      cognitiveLogs
     } = req.body;
 
     // Check if submission already exists
@@ -136,12 +137,13 @@ async function startServer() {
       return res.status(400).json({ error: "You have already submitted this exam." });
     }
 
-    db.prepare("INSERT INTO submissions (exam_id, student_id, answers, proctoring_logs, ai_analysis, cognitive_analysis, focus_analysis, growth_analysis, detailed_feedback, video_url, score, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    db.prepare("INSERT INTO submissions (exam_id, student_id, answers, proctoring_logs, cognitive_logs, ai_analysis, cognitive_analysis, focus_analysis, growth_analysis, detailed_feedback, video_url, score, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .run(
         examId,
         req.user.id,
         JSON.stringify(answers),
         JSON.stringify(proctoringLogs),
+        JSON.stringify(cognitiveLogs),
         aiAnalysis || "No analysis available.",
         cognitiveAnalysis || "No analysis available.",
         focusAnalysis || "No analysis available.",

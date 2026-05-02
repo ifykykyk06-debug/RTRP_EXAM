@@ -142,4 +142,10 @@ try {
   db.exec("ALTER TABLE users ADD COLUMN face_ref TEXT");
 }
 
+try {
+  db.prepare("SELECT cognitive_logs FROM submissions LIMIT 1").get();
+} catch (e) {
+  db.exec("ALTER TABLE submissions ADD COLUMN cognitive_logs TEXT");
+}
+
 export default db;
