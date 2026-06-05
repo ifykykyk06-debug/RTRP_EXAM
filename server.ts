@@ -128,7 +128,10 @@ async function startServer() {
       focusAnalysis,
       growthAnalysis,
       detailedFeedback,
-      cognitiveLogs
+      cognitiveLogs,
+      isAutoFail,
+      faceMismatchLogs,
+      violationCount
     } = req.body;
 
     // Check if submission already exists
@@ -137,22 +140,39 @@ async function startServer() {
       return res.status(400).json({ error: "You have already submitted this exam." });
     }
 
-    db.prepare("INSERT INTO submissions (exam_id, student_id, answers, proctoring_logs, cognitive_logs, ai_analysis, cognitive_analysis, focus_analysis, growth_analysis, detailed_feedback, video_url, score, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    const grade = isAutoFail ? 'FAIL' : 'PENDING';
+    const autoSubmitted = isAutoFail ? 1 : 0;
+    const finalScore = isAutoFail ? 0 : (score || 0);
+
+    db.prepare("INSERT INTO submissions (exam_id, student_id, answers, proctoring_logs, cognitive_logs, ai_analysis, cognitive_analysis, focus_analysis, growth_analysis, detailed_feedback, video_url, score, status, auto_submitted, grade, face_mismatch_logs, violation_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .run(
         examId,
         req.user.id,
         JSON.stringify(answers),
         JSON.stringify(proctoringLogs),
         JSON.stringify(cognitiveLogs),
-        aiAnalysis || "No analysis available.",
+        isAutoFail ? 'Exam auto-submitted due to repeated malpractice violations.' : (aiAnalysis || "No analysis available."),
         cognitiveAnalysis || "No analysis available.",
         focusAnalysis || "No analysis available.",
         growthAnalysis || "No analysis available.",
         detailedFeedback || "No detailed feedback available.",
         videoUrl,
-        score || 0,
-        'approved'
+        finalScore,
+        'approved',
+        autoSubmitted,
+        grade,
+        JSON.stringify(faceMismatchLogs || []),
+        violationCount || 0
       );
+    res.json({ success: true });
+  });
+
+  // Teacher override: change grade from FAIL to PASS (or vice versa)
+  app.post("/api/submissions/:id/override-grade", authenticate, (req: any, res) => {
+    if (req.user.role !== 'teacher') return res.status(403).json({ error: "Forbidden" });
+    const { grade } = req.body;
+    if (!['PASS', 'FAIL', 'PENDING'].includes(grade)) return res.status(400).json({ error: "Invalid grade" });
+    db.prepare("UPDATE submissions SET grade = ? WHERE id = ?").run(grade, req.params.id);
     res.json({ success: true });
   });
 
@@ -197,6 +217,17 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.delete("/api/exams/:id", authenticate, (req: any, res) => {
+    if (req.user.role !== 'teacher') return res.status(403).json({ error: "Forbidden" });
+    const exam = db.prepare("SELECT * FROM exams WHERE id = ? AND teacher_id = ?").get(req.params.id, req.user.id);
+    if (!exam) return res.status(404).json({ error: "Exam not found" });
+    
+    db.prepare("DELETE FROM questions WHERE exam_id = ?").run(req.params.id);
+    db.prepare("DELETE FROM submissions WHERE exam_id = ?").run(req.params.id);
+    db.prepare("DELETE FROM exams WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
   // --- Material Routes ---
   app.post("/api/materials", authenticate, (req: any, res) => {
     const { title, description, file_url } = req.body;
@@ -237,6 +268,16 @@ async function startServer() {
     socket.on("suspicious-activity", (data) => {
       io.to(`teacher-monitor`).emit("teacher-warning", data);
       socket.emit("student-warning", "Warning: Suspicious activity detected!");
+    });
+
+    socket.on("face-mismatch", (data) => {
+      io.to(`teacher-monitor`).emit("teacher-face-mismatch", {
+        studentId: data.studentId,
+        studentName: data.studentName,
+        examId: data.examId,
+        screenshot: data.screenshot,
+        timestamp: data.timestamp
+      });
     });
 
     socket.on("disconnect", () => {

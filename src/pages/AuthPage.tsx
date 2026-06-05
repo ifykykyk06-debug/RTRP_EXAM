@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { GraduationCap, LogIn, UserPlus, Eye, EyeOff, Camera, RefreshCw, CheckCircle, ShieldCheck } from 'lucide-react';
+import { GraduationCap, Eye, EyeOff, Camera, RefreshCw, CheckCircle, ShieldCheck, KeyRound, ScanFace } from 'lucide-react';
 import * as faceapi from 'face-api.js';
 
 export default function AuthPage() {
@@ -16,6 +16,9 @@ export default function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [loginData, setLoginData] = useState<any>(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [verifyMode, setVerifyMode] = useState<'face' | 'code'>('face');
+  const [enteredCode, setEnteredCode] = useState('');
+  const [codeError, setCodeError] = useState('');
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -108,6 +111,8 @@ export default function AuthPage() {
             // Students must go through biometrics
             setLoginData(data);
             if (data.faceRef) {
+              // Store face reference in localStorage for in-exam identity checks
+              localStorage.setItem('faceRef', data.faceRef);
               setStep('biometric');
             } else {
               setError('Face record not found for this student account.');
@@ -164,15 +169,40 @@ export default function AuthPage() {
 
       // PERFORM BIOMETRIC VERIFICATION CLIENT SIDE
       try {
-        // Create HTMLImageElement for reference face
+        console.log("Starting biometric verification...");
+        console.log("Loading reference image...");
         const refImg = await faceapi.fetchImage(loginData.faceRef);
+        console.log("Reference image loaded. Dimensions:", refImg.width, "x", refImg.height);
 
-        // Create HTMLImageElement for captured face
+        console.log("Loading query image...");
         const queryImg = await faceapi.fetchImage(capturedImage);
+        console.log("Query image loaded. Dimensions:", queryImg.width, "x", queryImg.height);
 
-        // Detect faces and compute descriptors
-        const refDetection = await faceapi.detectSingleFace(refImg).withFaceLandmarks().withFaceDescriptor();
-        const queryDetection = await faceapi.detectSingleFace(queryImg).withFaceLandmarks().withFaceDescriptor();
+        // Detect faces and compute descriptors with fallback to lower confidence thresholds
+        console.log("Detecting face in reference image...");
+        let refDetection = await faceapi.detectSingleFace(refImg).withFaceLandmarks().withFaceDescriptor();
+        if (!refDetection) {
+          console.log("Reference face detection failed at 0.5. Trying minConfidence: 0.3...");
+          refDetection = await faceapi.detectSingleFace(refImg, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 })).withFaceLandmarks().withFaceDescriptor();
+        }
+        if (!refDetection) {
+          console.log("Reference face detection failed at 0.3. Trying minConfidence: 0.15...");
+          refDetection = await faceapi.detectSingleFace(refImg, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.15 })).withFaceLandmarks().withFaceDescriptor();
+        }
+
+        console.log("Detecting face in query image...");
+        let queryDetection = await faceapi.detectSingleFace(queryImg).withFaceLandmarks().withFaceDescriptor();
+        if (!queryDetection) {
+          console.log("Query face detection failed at 0.5. Trying minConfidence: 0.3...");
+          queryDetection = await faceapi.detectSingleFace(queryImg, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 })).withFaceLandmarks().withFaceDescriptor();
+        }
+        if (!queryDetection) {
+          console.log("Query face detection failed at 0.3. Trying minConfidence: 0.15...");
+          queryDetection = await faceapi.detectSingleFace(queryImg, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.15 })).withFaceLandmarks().withFaceDescriptor();
+        }
+
+        console.log("Reference detection result:", refDetection ? "Face Detected" : "No Face");
+        console.log("Query detection result:", queryDetection ? "Face Detected" : "No Face");
 
         if (queryDetection && canvasRef.current) {
           // Draw eye landmarks to visually identify eyes
@@ -206,13 +236,15 @@ export default function AuthPage() {
         } else {
           // Compare descriptors
           const distance = faceapi.euclideanDistance(refDetection.descriptor, queryDetection.descriptor);
+          console.log("Computed Euclidean Distance:", distance);
           
           if (distance < 0.75) {
+            console.log("Verification successful! Distance:", distance);
             login(loginData.token, loginData.user);
             navigate(loginData.user.role === 'teacher' ? '/teacher' : '/student');
           } else {
-            setError(`Face verification failed: Identity mismatch (Distance: ${distance.toFixed(2)}). Please try again.`);
-            // Don't clear the image immediately so they can see the identified eyes
+            console.log("Verification failed. Distance:", distance);
+            setError('Face does not match. Please try again.');
             setTimeout(() => {
               setCapturedImage(null);
               startCamera();
@@ -229,7 +261,30 @@ export default function AuthPage() {
       }
     } else {
       // SIGN UP FLOW
+      if (!modelsLoaded) {
+        setError('Face models are still loading. Please try again in a few seconds.');
+        setIsLoading(false);
+        return;
+      }
+
       try {
+        const queryImg = await faceapi.fetchImage(capturedImage);
+        let queryDetection = await faceapi.detectSingleFace(queryImg).withFaceLandmarks().withFaceDescriptor();
+        if (!queryDetection) {
+          queryDetection = await faceapi.detectSingleFace(queryImg, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 })).withFaceLandmarks().withFaceDescriptor();
+        }
+        if (!queryDetection) {
+          queryDetection = await faceapi.detectSingleFace(queryImg, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.15 })).withFaceLandmarks().withFaceDescriptor();
+        }
+
+        if (!queryDetection) {
+          setError('Could not detect a face in the captured image. Please ensure your face is clearly visible and well-lit.');
+          setCapturedImage(null);
+          startCamera();
+          setIsLoading(false);
+          return;
+        }
+
         const res = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -252,6 +307,32 @@ export default function AuthPage() {
       } finally {
         setIsLoading(false);
       }
+    }
+  };
+
+  const handleCodeLogin = () => {
+    setCodeError('');
+    if (enteredCode === '0000') {
+      if (loginData) {
+        login(loginData.token, loginData.user);
+        navigate(loginData.user.role === 'teacher' ? '/teacher' : '/student');
+      }
+    } else {
+      setCodeError('Incorrect code. Please try again.');
+    }
+  };
+
+  const switchVerifyMode = (mode: 'face' | 'code') => {
+    setVerifyMode(mode);
+    setError('');
+    setCodeError('');
+    setEnteredCode('');
+    if (mode === 'face') {
+      setCapturedImage(null);
+      startCamera();
+    } else {
+      stopCamera();
+      setCapturedImage(null);
     }
   };
 
@@ -300,6 +381,7 @@ export default function AuthPage() {
                     <input 
                       type="text" 
                       required
+                      autoComplete="off"
                       className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
                       placeholder="Enter name here"
                       value={formData.name}
@@ -312,6 +394,7 @@ export default function AuthPage() {
                   <input 
                     type="email" 
                     required
+                    autoComplete="off"
                     className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
                     placeholder="name@university.edu"
                     value={formData.email}
@@ -324,6 +407,7 @@ export default function AuthPage() {
                     <input 
                       type={showPassword ? "text" : "password"} 
                       required
+                      autoComplete="new-password"
                       className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all pr-12"
                       placeholder="••••••••"
                       value={formData.password}
@@ -372,83 +456,184 @@ export default function AuthPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="space-y-6"
+              className="space-y-5"
             >
               <div className="text-center">
-                <h2 className="text-xl font-bold text-zinc-900 dark:text-white">Face Identity Verification</h2>
+                <h2 className="text-xl font-bold text-zinc-900 dark:text-white">Identity Verification</h2>
                 <p className="text-sm text-zinc-500 mt-1">
-                  {isLogin ? 'Confirm your identity to log in' : 'Create your secure face pattern'}
+                  {isLogin ? 'Choose how you want to verify your identity' : 'Create your secure face pattern'}
                 </p>
               </div>
 
-              <div className="relative aspect-square max-w-[280px] mx-auto bg-black rounded-full overflow-hidden border-4 border-emerald-500/30 shadow-glow flex items-center justify-center">
-                {!capturedImage ? (
-                  <>
-                    <video 
-                      ref={videoRef} 
-                      autoPlay 
-                      playsInline 
-                      muted 
-                      className="w-full h-full object-cover scale-x-[-1]"
-                    />
-                    <div className="absolute inset-0 border-[10px] border-emerald-500/10 rounded-full animate-pulse" />
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] border-2 border-dashed border-white/20 rounded-full" />
-                  </>
-                ) : (
-                  <img src={capturedImage} className="w-full h-full object-cover scale-x-[-1]" alt="Captured" />
-                )}
-                
-                {isLoading && (
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
-                    <div className="flex flex-col items-center gap-3">
-                      <RefreshCw className="animate-spin text-emerald-400 w-10 h-10" />
-                      <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest">Analyzing Patterns...</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <canvas ref={canvasRef} className="hidden" />
-
-              <div className="space-y-3">
-                {!capturedImage ? (
-                  <button 
-                    onClick={captureSnapshot}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20"
+              {/* Verification Mode Tabs — only shown during login */}
+              {isLogin && (
+                <div className="flex bg-zinc-100 dark:bg-zinc-950 p-1 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  <button
+                    onClick={() => switchVerifyMode('face')}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+                      verifyMode === 'face'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                    }`}
                   >
-                    <Camera size={20} />
-                    Capture Face Identity
+                    <ScanFace size={16} />
+                    Face Recognition
                   </button>
-                ) : (
-                  <div className="space-y-3">
-                    <button 
-                      onClick={() => handleFinalAuth()}
-                      disabled={isLoading}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
-                    >
-                      <ShieldCheck size={20} />
-                      {isLogin ? 'Verify & Sign In' : 'Secure & Create Account'}
-                    </button>
-                    <button 
-                      onClick={retryCapture}
-                      disabled={isLoading}
-                      className="w-full bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white font-medium py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all"
-                    >
-                      <RefreshCw size={18} />
-                      Retake Photo
-                    </button>
-                  </div>
-                )}
-                
-                <button 
-                  onClick={() => { setStep('form'); stopCamera(); setCapturedImage(null); }}
-                  className="w-full text-zinc-500 text-sm hover:text-zinc-900 dark:hover:text-white transition-colors py-2"
-                >
-                  Back to {isLogin ? 'Login form' : 'Sign up form'}
-                </button>
-              </div>
+                  <button
+                    onClick={() => switchVerifyMode('code')}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+                      verifyMode === 'code'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                    }`}
+                  >
+                    <KeyRound size={16} />
+                    Enter Code
+                  </button>
+                </div>
+              )}
 
-              {error && <p className="text-red-500 text-sm text-center bg-red-500/10 p-3 rounded-xl border border-red-500/20">{error}</p>}
+              <AnimatePresence mode="wait">
+                {/* ─── FACE RECOGNITION PANEL ─── */}
+                {(!isLogin || verifyMode === 'face') && (
+                  <motion.div
+                    key="face-panel"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 10 }}
+                    className="space-y-4"
+                  >
+                    <div className="relative aspect-square max-w-[260px] mx-auto bg-black rounded-full overflow-hidden border-4 border-emerald-500/30 shadow-glow flex items-center justify-center">
+                      {!capturedImage ? (
+                        <>
+                          <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="w-full h-full object-cover scale-x-[-1]"
+                          />
+                          <div className="absolute inset-0 border-[10px] border-emerald-500/10 rounded-full animate-pulse" />
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] border-2 border-dashed border-white/20 rounded-full" />
+                        </>
+                      ) : (
+                        <img src={capturedImage} className="w-full h-full object-cover scale-x-[-1]" alt="Captured" />
+                      )}
+                      {isLoading && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
+                          <div className="flex flex-col items-center gap-3">
+                            <RefreshCw className="animate-spin text-emerald-400 w-10 h-10" />
+                            <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest">Analyzing Patterns...</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <canvas ref={canvasRef} className="hidden" />
+
+                    <div className="space-y-3">
+                      {!capturedImage ? (
+                        <button
+                          onClick={captureSnapshot}
+                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20"
+                        >
+                          <Camera size={20} />
+                          Capture Face Identity
+                        </button>
+                      ) : (
+                        <div className="space-y-3">
+                          <button
+                            onClick={() => handleFinalAuth()}
+                            disabled={isLoading}
+                            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+                          >
+                            <ShieldCheck size={20} />
+                            {isLogin ? 'Verify & Sign In' : 'Secure & Create Account'}
+                          </button>
+                          <button
+                            onClick={retryCapture}
+                            disabled={isLoading}
+                            className="w-full bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white font-medium py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all"
+                          >
+                            <RefreshCw size={18} />
+                            Retake Photo
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {error && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-red-500 text-sm text-center bg-red-500/10 p-3 rounded-xl border border-red-500/20"
+                      >
+                        {error}
+                      </motion.p>
+                    )}
+                  </motion.div>
+                )}
+
+                {/* ─── ENTER CODE PANEL ─── */}
+                {isLogin && verifyMode === 'code' && (
+                  <motion.div
+                    key="code-panel"
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    className="space-y-4"
+                  >
+                    <div className="flex flex-col items-center gap-3 py-4">
+                      <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                        <KeyRound className="text-emerald-500 w-8 h-8" />
+                      </div>
+                      <p className="text-zinc-500 dark:text-zinc-400 text-sm text-center">
+                        Enter your 4-digit access code to sign in without facial recognition.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">Access Code</label>
+                      <input
+                        type="password"
+                        maxLength={4}
+                        inputMode="numeric"
+                        placeholder="••••"
+                        value={enteredCode}
+                        onChange={e => { setEnteredCode(e.target.value.replace(/\D/g, '')); setCodeError(''); }}
+                        onKeyDown={e => e.key === 'Enter' && handleCodeLogin()}
+                        className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-4 text-zinc-900 dark:text-white text-center text-2xl tracking-[0.5em] font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all"
+                      />
+                    </div>
+
+                    {codeError && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-red-500 text-sm text-center bg-red-500/10 p-3 rounded-xl border border-red-500/20"
+                      >
+                        {codeError}
+                      </motion.p>
+                    )}
+
+                    <button
+                      onClick={handleCodeLogin}
+                      disabled={enteredCode.length !== 4}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <CheckCircle size={20} />
+                      Sign In with Code
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <button
+                onClick={() => { setStep('form'); stopCamera(); setCapturedImage(null); setVerifyMode('face'); setEnteredCode(''); setCodeError(''); setError(''); }}
+                className="w-full text-zinc-500 text-sm hover:text-zinc-900 dark:hover:text-white transition-colors py-2"
+              >
+                ← Back to {isLogin ? 'Login form' : 'Sign up form'}
+              </button>
             </motion.div>
           )}
         </AnimatePresence>

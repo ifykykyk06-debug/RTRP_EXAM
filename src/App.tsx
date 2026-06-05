@@ -69,13 +69,6 @@ function Sidebar({ role, theme, toggleTheme }: { role: 'teacher' | 'student', th
       </nav>
 
       <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 space-y-4">
-        <button 
-          onClick={toggleTheme}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-white transition-all"
-        >
-          {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-          <span className="font-medium">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
-        </button>
 
         <div className="flex items-center gap-3 px-4 py-3">
           <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-900 dark:text-white uppercase">

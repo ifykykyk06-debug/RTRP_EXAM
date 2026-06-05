@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { motion } from 'motion/react';
-import { Plus, Trash2, Code, List, Save } from 'lucide-react';
+import { Plus, Trash2, Code, List, Save, Menu } from 'lucide-react';
 
 export default function TeacherAssignments() {
   const { token } = useAuth();
@@ -60,6 +60,7 @@ export default function TeacherAssignments() {
   };
 
   const [exams, setExams] = useState([]);
+  const [activeDropdownMenu, setActiveDropdownMenu] = useState<number | null>(null);
 
   useEffect(() => {
     fetch('/api/exams', {
@@ -87,6 +88,20 @@ export default function TeacherAssignments() {
     });
     if (res.ok) {
       setExams(exams.map((e: any) => e.id === id ? { ...e, is_released: 1 } : e));
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this exam? All related submissions will be lost.')) return;
+    const res = await fetch(`/api/exams/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      setExams(exams.filter((e: any) => e.id !== id));
+      setActiveDropdownMenu(null);
+    } else {
+      alert('Failed to delete exam');
     }
   };
 
@@ -357,9 +372,29 @@ export default function TeacherAssignments() {
                   <div className={`p-2 rounded-lg shadow-sm ${e.type === 'mcq' ? 'bg-blue-500/10 text-blue-500' : 'bg-purple-500/10 text-purple-500'}`}>
                     {e.type === 'mcq' ? <List size={20} /> : <Code size={20} />}
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${e.is_released ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
-                    {e.is_released ? 'Released' : 'Draft'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${e.is_released ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                      {e.is_released ? 'Released' : 'Draft'}
+                    </span>
+                    <div className="relative">
+                      <button 
+                        onClick={() => setActiveDropdownMenu(activeDropdownMenu === e.id ? null : e.id)}
+                        className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                      >
+                        <Menu size={18} />
+                      </button>
+                      {activeDropdownMenu === e.id && (
+                        <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-lg overflow-hidden z-10">
+                          <button 
+                            onClick={() => handleDelete(e.id)}
+                            className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 flex items-center gap-2 transition-colors"
+                          >
+                            <Trash2 size={14} /> Delete Exam
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">{e.title}</h3>
                 <p className="text-sm text-zinc-500 line-clamp-2 mb-4">{e.description}</p>

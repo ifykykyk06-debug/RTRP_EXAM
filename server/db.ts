@@ -148,4 +148,28 @@ try {
   db.exec("ALTER TABLE submissions ADD COLUMN cognitive_logs TEXT");
 }
 
+try {
+  db.prepare("SELECT auto_submitted FROM submissions LIMIT 1").get();
+} catch (e) {
+  db.exec("ALTER TABLE submissions ADD COLUMN auto_submitted INTEGER DEFAULT 0");
+}
+
+try {
+  db.prepare("SELECT grade FROM submissions LIMIT 1").get();
+} catch (e) {
+  db.exec("ALTER TABLE submissions ADD COLUMN grade TEXT DEFAULT 'PENDING'");
+}
+
+try {
+  db.prepare("SELECT face_mismatch_logs FROM submissions LIMIT 1").get();
+} catch (e) {
+  db.exec("ALTER TABLE submissions ADD COLUMN face_mismatch_logs TEXT");
+}
+
+try {
+  db.prepare("SELECT violation_count FROM submissions LIMIT 1").get();
+} catch (e) {
+  db.exec("ALTER TABLE submissions ADD COLUMN violation_count INTEGER DEFAULT 0");
+}
+
 export default db;
