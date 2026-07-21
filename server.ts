@@ -294,8 +294,11 @@ async function startServer() {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: false,
+        hmr: {
+          port: 0 // Automatically find an available port to avoid EADDRINUSE
+        },
         watch: null,
+        allowedHosts: true,
       },
       appType: "spa",
     });
@@ -305,10 +308,22 @@ async function startServer() {
     app.get("*", (req, res) => res.sendFile(path.resolve("dist/index.html")));
   }
 
-  const PORT = Number(process.env.PORT) || 3000;
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+  const initialPort = Number(process.env.PORT) || 3000;
+  const startListening = (port: number) => {
+    httpServer.listen(port, "0.0.0.0", () => {
+      console.log(`Server running on port ${port}`);
+      console.log(`You can view the app at: http://localhost:${port}`);
+    }).on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        console.log(`Port ${port} is in use, trying ${port + 1}...`);
+        startListening(port + 1);
+      } else {
+        console.error("Server error:", err);
+      }
+    });
+  };
+
+  startListening(initialPort);
 }
 
 startServer();
